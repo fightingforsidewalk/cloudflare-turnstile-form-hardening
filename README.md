@@ -52,7 +52,7 @@ first curious reader.
 
 ## How to read it
 
-Straight through once, then section 12 for adoption order. Section 11 is ten negative cases,
+Straight through once, then section 12 for adoption order. Section 11 is eleven negative cases,
 and they are meant to be watched failing by hand rather than reasoned about — case 6, two
 addresses with separate buckets, is the only one that catches the forwarded-IP bug.
 

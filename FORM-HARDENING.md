@@ -975,7 +975,7 @@ effort spent.
    steps make it the only remaining gap.
 6. **Uniform refusal.** An hour, once everything else exists. Collapse all the error paths
    to one response.
-7. **Run the ten negative cases in section 11.** Half a day. This is not optional: the
+7. **Run the eleven negative cases in section 11.** Half a day. This is not optional: the
    preceding six steps are claims, and this step is the only thing that turns them into
    facts.
 
