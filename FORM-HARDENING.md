@@ -2,21 +2,17 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.1 · September 2026 · CC0 1.0
+Version 1.2 · September 2026 · CC0 1.0
 
 ---
 
-## Provenance, stated straight
+## Where this came from
 
-This came out of one implementation, one set of forms built carefully. It is live, it works, and
-**it has not yet been attacked.** The rate limiter in section 6 has never met a real abuser;
-the challenge integration in section 5 has never been probed by anyone but its authors.
-Nothing here has been adversarially reviewed by an outside party.
-
-So read it as reasoning, not as authority. The specific traps are real and cost real hours —
-that part is not in doubt, because they were found the hard way. What is untested is whether
-the whole assembly holds up under volume. If you deploy this and learn something it gets
-wrong, that is a contribution worth more than the document.
+This came out of one implementation, one set of forms built carefully. It is live and it
+works. Nothing here has been reviewed by anyone outside the project, so read it as reasoning
+rather than as authority. The specific traps are real and were found the hard way. If you
+deploy this and learn something it gets wrong, that correction is worth more than the
+document.
 
 ## Scope — what this does NOT cover
 

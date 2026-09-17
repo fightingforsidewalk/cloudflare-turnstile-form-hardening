@@ -4,7 +4,7 @@
 
 Companion to [FORM-HARDENING.md](FORM-HARDENING.md).
 
-Version 1.0 · September 2026 · CC0 1.0
+Version 1.1 · September 2026 · CC0 1.0
 
 That guide covers a public form: a stranger types, a message goes out, nothing is kept.
 This one covers everything after that — input that is **stored** and rendered later,
@@ -16,10 +16,10 @@ fix the rows.
 
 ---
 
-## Provenance and scope
+## Where this came from, and what it does not cover
 
-Same as the companion guide: this came out of one implementation, it is live, and
-it has not been attacked. Read it as reasoning rather than authority.
+Same as the companion guide: this came out of one implementation and it is live. Read it as
+reasoning rather than authority.
 
 Out of scope here: authentication, CSRF, serving user-uploaded files (section 6 covers
 *accepting* them, not hosting them), and everything jurisdictional about the personal data

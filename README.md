@@ -25,13 +25,11 @@ something is live:
 Section 14 generalises those three past forms, which is the part worth reading even if you
 never ship a form again.
 
-## The honest part
+## Where this came from
 
-This came out of one implementation. It is live, it works, and **it has not yet been
-attacked.** Nothing here has had outside adversarial review. The traps are real and were
-found the hard way; what is untested is whether the whole assembly holds under volume. The
-guide says so in its own first section rather than burying it, and if you deploy this and
-learn something it gets wrong, that correction is worth more than the document.
+This came out of one implementation. It is live, it works, and nothing here has been reviewed
+by anyone outside the project. The traps are real and were found the hard way. If you deploy
+this and learn something it gets wrong, that correction is worth more than the document.
 
 Out of scope, and named as such: CSRF, authentication, file uploads, content filtering, and
 the obligations that attach to personal data once you have received it.
