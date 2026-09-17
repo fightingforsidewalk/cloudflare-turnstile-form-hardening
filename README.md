@@ -1,6 +1,6 @@
-# form-hardening
+# Hardening a public form on Cloudflare
 
-**Hardening a public form: Turnstile, rate limiting, validation, and safe output.**
+**Turnstile, the Worker proxy hop, rate limiting, validation, and safe output.**
 A working pattern, with its reasoning, in one file: [`FORM-HARDENING.md`](FORM-HARDENING.md).
 
 Five layers, cheapest first, on the one surface every project eventually ships — a box a
