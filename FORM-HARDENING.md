@@ -2,7 +2,7 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.0 · September 2026 · CC0 1.0
+Version 1.1 · September 2026 · CC0 1.0
 
 ---
 
@@ -333,6 +333,29 @@ Five details, each load-bearing:
   real user out of your form permanently. This one bites in production, not in testing.
 - **`readOnly` with `value=""`.** The real form always submits the empty string. The field
   is in the payload so its absence is also detectable server-side.
+- **Where the hiding rules live is a security decision, not a styling one.** This is the
+  detail that is missing from every honeypot write-up we have read, including the first
+  version of this one, and we learned it by shipping the bug. The field lives in the markup.
+  If the rules that hide it live in a stylesheet, those are two artefacts on two independent
+  cache schedules, and a returning visitor can get new markup against an old stylesheet. When
+  that happens the honeypot renders as what it actually is: a visible, labelled text input in
+  the middle of your contact form. It is not a disclosure and nobody can exploit it, but a
+  trap that announces itself has stopped being a trap, and a real user who fills it in is
+  silently refused.
+
+  The example above keeps the rules inline, which is why it is written as a style object
+  rather than a class. That makes the pair atomic — markup and its hiding arrive together or
+  not at all — and it is the right default. Know what it costs: inline style attributes are
+  governed by `style-src-attr`, which falls back to `style-src`, so this needs `'unsafe-inline'`
+  in your Content Security Policy. That is a real allowance, and the day someone tightens the
+  policy — a good instinct, arriving from somewhere else entirely — the honeypot becomes
+  visible again, with nothing in either change connecting them.
+
+  So pick deliberately. Either put a content hash in the stylesheet's URL, so markup and CSS
+  are always a matched pair and the rules can live in a class under a strict policy; or keep
+  them inline and write down, next to the policy, that the allowance is load-bearing. Both are
+  defensible. What is not defensible is choosing by accident and finding out from a form that
+  has been advertising its own honeypot since breakfast.
 
 And the retry path:
 
@@ -923,6 +946,13 @@ the code reading correctly.
 10. **Read your own logs afterwards.** Every refusal above should be distinguishable to you
     and indistinguishable to the caller. If you cannot tell from the logs which layer caught
     what, you have uniform refusal without observability, which is half the design.
+11. **Load the form with the stylesheet blocked, and look at it.** In devtools, disable the
+    site's CSS — or block the request outright — and confirm the honeypot is still invisible.
+    This is the only test that distinguishes a field hidden by something that always arrives
+    from one hidden by something that usually does, and "usually" is the whole bug. Measure the
+    element rather than trusting your eyes: read its position and size with the stylesheet
+    off, and expect it off-screen and one pixel square. If it appears, your honeypot has a
+    window every time you change your CSS.
 
 ---
 
@@ -992,6 +1022,18 @@ intermediary is entitled to rewrite is not a field you can use to carry meaning 
 
 **Divergent error messages are a map of your defences.** You draw it and hand it over, one
 probe at a time.
+
+**A control whose correctness spans two separately cached artefacts is not one control.** It
+is two, and it is only correct while they agree. Caching makes them disagree on a schedule
+you do not set. Ask of any check: what has to arrive, from where, for this to be true? If the
+answer names more than one thing, either bind them together — a content hash in the URL is
+usually enough — or move the check somewhere that only needs one of them.
+
+**A workaround that depends on a permission is a debt against whoever withdraws it.** Hiding
+an element inline needs `'unsafe-inline'`; trusting a header needs whatever guarantees that
+header. The person who later withdraws the permission is doing the right thing, will have no
+idea what they broke, and will not find out from your code unless you wrote it down beside
+the permission rather than beside the workaround.
 
 **A citation in code names something safe to publish.** The reasoning beside the code is the
 valuable part and it does not need a filename to work. Cite a public URL, a standard anyone
