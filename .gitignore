@@ -1,0 +1,11 @@
+# editors / OS
+.vscode/
+.idea/
+*.swp
+*.tmp
+.DS_Store
+Thumbs.db
+
+# local artifacts
+*.zip
+*.local.md
