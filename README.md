@@ -36,6 +36,12 @@ learn something it gets wrong, that correction is worth more than the document.
 Out of scope, and named as such: CSRF, authentication, file uploads, content filtering, and
 the obligations that attach to personal data once you have received it.
 
+Also out of scope here, and covered by the companion: **stored content rendered later** —
+admin-authored text on public pages, structured data, and anything held in a database and
+escaped at read time. That is [`INPUT-HANDLING.md`](INPUT-HANDLING.md), and it is the harder
+half. A mistake in a passing message affects one message; a mistake in stored content sits
+in the database waiting, and fixing the bug does not fix the rows.
+
 ## "Doesn't publishing your defences help attackers?"
 
 Worth answering rather than assuming away. Every layer here is standard practice, already

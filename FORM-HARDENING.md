@@ -40,6 +40,9 @@ Deliberately out of scope, each of which needs its own thinking:
   exposure; it does not discharge any of it.
 - **Denial of service above the application layer** — that is your CDN's job, not your
   handler's.
+- **Stored content rendered later** — admin-authored text on public pages, structured
+  data, and anything held in a database and escaped at read time. That is the companion
+  document, [INPUT-HANDLING.md](INPUT-HANDLING.md).
 
 The stack shown is a React front end talking to a Hono API through an edge proxy, behind
 Cloudflare. The *reasoning* ports anywhere. Some of the *traps* are specific to having a CDN
