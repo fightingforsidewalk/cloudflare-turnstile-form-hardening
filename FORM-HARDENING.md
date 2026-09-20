@@ -2,7 +2,7 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.4 · September 2026 · CC0 1.0
+Version 1.5 · September 2026 · CC0 1.0
 
 ---
 
@@ -523,7 +523,14 @@ export async function verifyChallenge(token: string, opts: VerifyOptions): Promi
   if (opts.ip) body.set('remoteip', opts.ip)
 
   try {
-    const res = await fetch(VERIFY_URL, { method: 'POST', body })
+    // Bounded, not just fail-closed. Without a deadline, a vendor network problem
+    // parks this handler until the platform decides what a timeout means — which
+    // on some platforms is never, and on others is a number you did not choose.
+    const res = await fetch(VERIFY_URL, {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(10_000),
+    })
     const data = await res.json() as {
       success: boolean; action?: string; hostname?: string
     }
@@ -547,6 +554,36 @@ export async function verifyChallenge(token: string, opts: VerifyOptions): Promi
   }
 }
 ```
+
+### Fail closed is half of it. Fail bounded is the other half.
+
+An outbound call to a third party sits between your visitor and their answer. Fail-closed
+says what happens when it returns something wrong. It says nothing about what happens when it
+returns nothing at all, and that is the case that hurts: not an error you handle, but a socket
+that stays open while your handler waits. On a long-lived server that is a worker tied up per
+submission. On a platform with its own request ceiling, it is your visitor watching a spinner
+until somebody else's timeout fires — a number you did not pick and probably do not know.
+
+`AbortSignal.timeout` costs one line and converts an unbounded wait into an ordinary failure,
+which the fail-closed path already knows how to refuse. Ten seconds is generous for this call;
+pick a number and write it down rather than inheriting one.
+
+**If you retry, retry correctly.** The obvious reaction to a timeout is to try again, and the
+obvious way to do that is wrong here. Challenge tokens are single-use: replay one and the
+vendor answers `timeout-or-duplicate`, which is indistinguishable from an attacker replaying a
+spent token. Cloudflare's siteverify takes an `idempotency_key` — a UUID you generate — so the
+*validation request* can be retried safely while the token underneath stays single-use. Send
+the same key with the retry and you get the original answer back rather than a duplicate
+rejection.
+
+This pattern is not unique to one vendor. Any single-use credential verified over a network
+has the same shape, and the general form is worth carrying: **a retry of a request is not a
+retry of the thing the request was about.** If the resource is single-use, the retry needs its
+own identity, or it is a second attempt at something that can only happen once.
+
+Not retrying at all is also a defensible answer for a contact form, and it is what the route
+in this guide does. Refusing on a vendor timeout costs one visitor one resubmission. What is
+not defensible is retrying without the key and then reading the duplicate rejection as a bot.
 
 ### What the hostname check is actually for
 
@@ -1021,7 +1058,19 @@ the code reading correctly.
 10. **Read your own logs afterwards.** Every refusal above should be distinguishable to you
     and indistinguishable to the caller. If you cannot tell from the logs which layer caught
     what, you have uniform refusal without observability, which is half the design.
-11. **Load the form with the stylesheet blocked, and look at it.** In devtools, disable the
+11. **Run the refusals against the vendor's own test keys, so they are repeatable.**
+    Cloudflare publishes dummy sitekeys and secrets that make the outcome deterministic
+    instead of something you have to contrive: a sitekey that always passes, one that always
+    fails, one that forces an interactive challenge, and — the useful one — a secret key
+    (`3x0000000000000000000000000000000AA`) that answers "token already spent". That last one
+    is how you exercise the replay path without waiting for a real token to be spent, which
+    is otherwise one of the hardest cases to stage. Production secrets reject dummy tokens and
+    the reverse, so this belongs in a test environment, not behind a flag in production.
+
+    This is the bridge from watching a gate refuse by hand to watching it refuse on every
+    commit. The philosophy does not change; only who is looking.
+
+12. **Load the form with the stylesheet blocked, and look at it.** In devtools, disable the
     site's CSS — or block the request outright — and confirm the honeypot is still invisible.
     This is the only test that distinguishes a field hidden by something that always arrives
     from one hidden by something that usually does, and "usually" is the whole bug. Measure the
@@ -1050,7 +1099,7 @@ effort spent.
    steps make it the only remaining gap.
 6. **Uniform refusal.** An hour, once everything else exists. Collapse all the error paths
    to one response.
-7. **Run the eleven negative cases in section 11.** Half a day. This is not optional: the
+7. **Run the twelve negative cases in section 11.** Half a day. This is not optional: the
    preceding six steps are claims, and this step is the only thing that turns them into
    facts.
 
@@ -1091,6 +1140,27 @@ refuse something, you do not know that it refuses anything.
 
 **Fail closed, and never add the "assume ok if the vendor is down" branch.** An outage that
 blocks a form is visible and temporary. One that opens a form to bots is neither.
+
+**Fail closed is half of it; fail bounded is the other half.** Closing covers the wrong
+answer. It says nothing about no answer, which is the case that parks a handler on somebody
+else's socket until a timeout you did not choose fires. Put a deadline on every call your own
+response waits behind, and the unbounded wait becomes an ordinary failure the closed path
+already handles.
+
+**A retry of a request is not a retry of the thing the request was about.** Anything
+single-use — a token, a charge, a one-shot job — needs the retry to carry its own identity, or
+the second attempt is a second go at something that could only happen once, and the rejection
+it earns looks exactly like an attack.
+
+**Cheapest check first is a security decision, not a performance one.** Ordering is what
+decides whether a stranger can make you spend money. A free string comparison ahead of a
+paid outbound call means the dumbest traffic costs you nothing; the same checks in the other
+order turn your own defences into the thing being exhausted.
+
+**Storing input safely and rendering input safely are different problems, and solving the
+first does not solve the second.** Store what they typed. Escape where it lands, which is a
+question about the destination and not about the value. Anything that mangles on the way in
+has lost data and still has to escape on the way out.
 
 **A header your CDN owns is not a forwarding channel.** More generally: any field an
 intermediary is entitled to rewrite is not a field you can use to carry meaning past it.
