@@ -573,8 +573,10 @@ obvious way to do that is wrong here. Challenge tokens are single-use: replay on
 vendor answers `timeout-or-duplicate`, which is indistinguishable from an attacker replaying a
 spent token. Cloudflare's siteverify takes an `idempotency_key` — a UUID you generate — so the
 *validation request* can be retried safely while the token underneath stays single-use. Send
-the same key with the retry and you get the original answer back rather than a duplicate
-rejection.
+the same key with the retry and the vendor treats it as the same validation rather than a
+second one. What it does not do is make the token reusable: that is still one token, one
+validation, and a genuine replay still earns `timeout-or-duplicate`. The key makes the
+*call* safe to repeat, not the credential.
 
 This pattern is not unique to one vendor. Any single-use credential verified over a network
 has the same shape, and the general form is worth carrying: **a retry of a request is not a
