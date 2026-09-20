@@ -2,7 +2,7 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.3 · September 2026 · CC0 1.0
+Version 1.4 · September 2026 · CC0 1.0
 
 ---
 
@@ -504,7 +504,7 @@ export interface VerifyOptions {
   label: string
   /** If the widget sets `action`, set it here too. Unchecked, it means nothing. */
   expectedAction?: string
-  /** The host this widget is allowed to be solved on. Usually your own domain. */
+  /** The exact host this widget may be solved on. Exact — see below on subdomains. */
   expectedHostname?: string
 }
 
@@ -547,6 +547,46 @@ export async function verifyChallenge(token: string, opts: VerifyOptions): Promi
   }
 }
 ```
+
+### What the hostname check is actually for
+
+The obvious objection: the widget's own configuration already lists which hostnames may
+solve it, so why compare again on the server. The answer is in how that list matches.
+Cloudflare's hostname management says a hostname you add covers **that host and all of its
+subdomains** — add `example.com` and the widget works on `www.example.com`,
+`shop.example.com` and `any.sub.example.com`. That is a suffix rule, and it is the right
+default for a dashboard, because nobody wants to enumerate their own subdomains.
+
+Your server has no such constraint. It can compare for **exact equality against a constant**,
+which is strictly tighter than the list that issued the token. A widget embedded on a
+subdomain — one that exists today, or one somebody stands up next year — produces a token the
+vendor considers valid and your server refuses. That is the one thing the second layer does
+that the first cannot, and it is the reason to write it.
+
+Two details that decide whether it works:
+
+**Compare against a constant you hold, never against the request's own `Host`.** Behind a
+proxy or a CDN, the `Host` reaching your handler is your API's hostname, not the page the
+visitor was looking at. A check written that way refuses every legitimate submission, and it
+refuses them in the way that is hardest to diagnose, because the code reads correctly.
+
+**Exact, not `endsWith`.** A suffix comparison recreates the dashboard's rule in your own
+code and throws away the only advantage you had. If you genuinely serve several hosts, list
+them and match against the set.
+
+### Why one of those options is optional and the other should not be
+
+`expectedHostname` has no dependency on anything in the page: the widget already solves on
+whatever host it is embedded in, so the check can ship on its own, today, with nothing else
+moving. `expectedAction` does have one — the markup has to carry `data-action` before the
+server starts demanding it, and the markup and the server usually deploy by different routes.
+Ship the verifier first and every submission is refused until the page catches up.
+
+That is why the action is checked only when the caller supplies an expected one. It is not
+laxity; it is what lets a codebase with several surfaces migrate them one at a time instead
+of in a single deploy that has to land everywhere at once. The moment a surface's markup
+carries its action, that surface's caller passes the expected value and the check is no
+longer optional for it.
 
 ### Every line, and why it is what it is
 
@@ -885,9 +925,11 @@ router.post('/', rateLimit(contactWriteLimiter), async (c) => {
 })
 ```
 
-**A promise left floating is safe in a long-lived server and is not safe everywhere.** The
-send above is deliberately not awaited, so a slow mail provider cannot hold the response
-open. That works because the process outlives the request. In a serverless runtime it does
+**A promise left floating is safe in a long-lived server and is not safe everywhere.** Say
+what this sample assumes, because the first version of this page did not and that omission
+was the defect: the route above was written for a long-lived Node process, and it is correct
+there. The send is deliberately not awaited, so a slow mail provider cannot hold the response
+open, and that works because the process outlives the request. In a serverless runtime it does
 not: the platform is entitled to tear the execution context down once you have responded, and
 work nobody registered simply stops. On Cloudflare Workers the registration is
 `ctx.waitUntil(promise)`; other runtimes have their own, and a queue works everywhere. Await
