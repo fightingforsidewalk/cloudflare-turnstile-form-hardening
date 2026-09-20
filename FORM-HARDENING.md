@@ -2,7 +2,7 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.5 · September 2026 · CC0 1.0
+Version 1.6 · September 2026 · CC0 1.0
 
 ---
 
@@ -58,10 +58,12 @@ actually for, what order the layers run in and why the order matters, and the sp
 traps that cost real debugging time. The code is TypeScript (React on the front, Hono on
 the back), but nothing here is framework-specific — the reasoning ports to anything.
 
-**The one-paragraph version.** A public form needs five independent layers, and they run
-cheapest-first: a honeypot (free), a bot challenge verified server-side (one API call), a
-per-IP rate limit (a map lookup), schema validation (microseconds), and output escaping
-(at the point of rendering). Every layer fails closed. Every refusal returns the same
+**The one-paragraph version.** A public form needs five independent layers, ordered so the
+cheap ones absorb the traffic the expensive ones would otherwise pay for. A per-IP rate limit
+(a map lookup) runs at the route boundary, before the handler, so it protects everything
+behind it including the call to the vendor. Inside the handler: a honeypot (free), then a bot
+challenge verified server-side (one API call), then schema validation (microseconds), then
+output escaping at the point of rendering. Every layer fails closed. Every refusal returns the same
 generic answer, so an attacker learns nothing from the difference between them. The
 recipient of the message is fixed in code and never comes from user input.
 
@@ -890,8 +892,9 @@ function escHtml(s: string): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
 }
 
-// Full cybersecurity-convention URL defang: break BOTH the scheme AND the dots, so no
-// email client can recognize or auto-link any part of the URL.
+// HTTP(S) URL defang, cybersecurity convention: break BOTH the scheme AND the dots,
+// so a mail client cannot auto-link the URLs this matches. Scheme-anchored, so a
+// bare `evil.example.com` is untouched and some clients will still link it.
 //   https:// → hxxps://     dots elsewhere → [.]
 // Applied to RAW input BEFORE HTML-escaping; brackets and 'x' are not HTML-special.
 function defangUrls(s: string): string {
@@ -964,7 +967,8 @@ router.post('/', rateLimit(contactWriteLimiter), async (c) => {
 })
 ```
 
-**A promise left floating is safe in a long-lived server and is not safe everywhere.** Say
+**A floating promise can complete in a long-lived server. It is neither portable nor
+durable.** Say
 what this sample assumes, because the first version of this page did not and that omission
 was the defect: the route above was written for a long-lived Node process, and it is correct
 there. The send is deliberately not awaited, so a slow mail provider cannot hold the response
@@ -974,6 +978,13 @@ work nobody registered simply stops. On Cloudflare Workers the registration is
 `ctx.waitUntil(promise)`; other runtimes have their own, and a queue works everywhere. Await
 it, register it, or queue it — the one thing that does not work is leaving it hanging in a
 place that ends.
+
+Even where it does complete, "completes" is not "delivered". A deploy, a crash or a container
+recycle takes the work with it, and the route has already answered 200, so nobody learns that
+the message never arrived. For a contact form that is a defensible trade: the cost of the rare
+loss is one person wondering why nobody replied. For anything where delivery actually matters
+— a receipt, a password reset, a deletion request you are obliged to action — best-effort is
+the wrong shape and a durable queue is the right one.
 
 **Malformed JSON, a filled honeypot, a missing token, a failed challenge, and a body that
 fails the schema all return the identical response: `400 {"error":"Invalid request"}`.**

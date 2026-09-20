@@ -68,7 +68,9 @@ proposing a standard. Read it alongside:
 - Cloudflare Turnstile — [validate the token](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/),
   which is also where the `action` and `hostname` checks in section 5 come from, and
   [hostname management](https://developers.cloudflare.com/turnstile/additional-configuration/hostname-management/),
-  which is why the server's check can be tighter than the widget's
+  which is why the server's check can be tighter than the widget's, and
+  [testing](https://developers.cloudflare.com/turnstile/troubleshooting/testing/),
+  for the deterministic sitekeys and secrets section 11 uses
 - Cloudflare Workers — [context and `waitUntil`](https://developers.cloudflare.com/workers/runtime-apis/context/)
   and [best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
 - Cloudflare — [HTTP headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/),
