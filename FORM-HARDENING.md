@@ -2,7 +2,7 @@
 
 **Turnstile, rate limiting, validation, and safe output. A working pattern, with its reasoning.**
 
-Version 1.2 · September 2026 · CC0 1.0
+Version 1.3 · September 2026 · CC0 1.0
 
 ---
 
@@ -78,11 +78,12 @@ between anybody.
   browser                          your edge/proxy                  your API
   ───────                          ──────────────                   ────────
   1. honeypot field (hidden)  ──▶
-  2. bot widget solves        ──▶  forward real client IP      ──▶  3. honeypot check
-     token attached                 in YOUR OWN header              4. token verify
-                                                                    5. rate limit
-                                                                    6. schema parse
-                                                                    7. escape + send
+  2. bot widget solves        ──▶  forward real client IP      ──▶  3. rate limit
+     token attached                 in YOUR OWN header              4. parse body
+                                                                    5. honeypot check
+                                                                    6. token verify
+                                                                    7. schema parse
+                                                                    8. escape + send
 ```
 
 The order is not arbitrary. It is **cheapest check first, most expensive last**, with one
@@ -315,7 +316,7 @@ The honeypot markup:
 </div>
 ```
 
-Five details, each load-bearing:
+Five details, each doing work:
 
 - **Off-screen positioning, not `display:none`.** Some bots skip anything with
   `display:none` or `visibility:hidden` because that check is trivial. Off-screen absolute
@@ -327,8 +328,13 @@ Five details, each load-bearing:
   everyone testing with a mouse.
 - **`autoComplete="off"`.** Otherwise a browser's autofill obligingly fills it and locks a
   real user out of your form permanently. This one bites in production, not in testing.
-- **`readOnly` with `value=""`.** The real form always submits the empty string. The field
-  is in the payload so its absence is also detectable server-side.
+- **`readOnly` with `value=""`, and the tradeoff that comes with it.** The real form always
+  submits the empty string, and the field is in the payload so its absence is detectable
+  server-side too. The cost is that a bot driving a real browser, honouring ordinary form
+  semantics, will skip a read-only input the same way a person would — so this trades some
+  of the trap's reach for immunity to a browser autofilling it and locking a real user out.
+  A writable field catches more and asks more of your autofill suppression. Pick knowing
+  which way you traded; do not copy this one believing it is free.
 - **Where the hiding rules live is a security decision, not a styling one.** This is the
   detail that is missing from every honeypot write-up we have read, including the first
   version of this one, and we learned it by shipping the bug. The field lives in the markup.
@@ -342,14 +348,15 @@ Five details, each load-bearing:
   The example above keeps the rules inline, which is why it is written as a style object
   rather than a class. That makes the pair atomic — markup and its hiding arrive together or
   not at all — and it is the right default. Know what it costs: inline style attributes are
-  governed by `style-src-attr`, which falls back to `style-src`, so this needs `'unsafe-inline'`
-  in your Content Security Policy. That is a real allowance, and the day someone tightens the
+  governed by `style-src-attr`, which falls back to `style-src`, so this needs an allowance
+  for inline styles in your Content Security Policy — `'unsafe-inline'` in most deployments,
+  or `'unsafe-hashes'` with the attribute's hash if you would rather be narrow about it. That is a real allowance, and the day someone tightens the
   policy — a good instinct, arriving from somewhere else entirely — the honeypot becomes
   visible again, with nothing in either change connecting them.
 
   So pick deliberately. Either put a content hash in the stylesheet's URL, so markup and CSS
   are always a matched pair and the rules can live in a class under a strict policy; or keep
-  them inline and write down, next to the policy, that the allowance is load-bearing. Both are
+  them inline and write down, next to the policy, that a control depends on that allowance. Both are
   defensible. What is not defensible is choosing by accident and finding out from a form that
   has been advertising its own honeypot since breakfast.
 
@@ -420,7 +427,7 @@ shared secret held only by your own server-side proxies. By the time this functi
 called, the sender is provably one of yours.
 
 ```ts
-// SECURITY INVARIANT — LOAD-BEARING.
+// SECURITY INVARIANT — READ THIS BEFORE CHANGING ANYTHING NEAR IT.
 // This header is trusted ONLY because the global origin lock has already rejected
 // anything that did not present APP_PROXY_SECRET. If the origin lock is removed,
 // weakened, or a rate-limited route is added to the lock's open-path list, this
@@ -495,6 +502,10 @@ export interface VerifyOptions {
   ip?: string
   /** Log prefix, so a missing key names the surface that noticed. */
   label: string
+  /** If the widget sets `action`, set it here too. Unchecked, it means nothing. */
+  expectedAction?: string
+  /** The host this widget is allowed to be solved on. Usually your own domain. */
+  expectedHostname?: string
 }
 
 /** True only if the vendor says this token is good. False for every other outcome. */
@@ -513,8 +524,24 @@ export async function verifyChallenge(token: string, opts: VerifyOptions): Promi
 
   try {
     const res = await fetch(VERIFY_URL, { method: 'POST', body })
-    const data = await res.json() as { success: boolean }
-    return data.success === true
+    const data = await res.json() as {
+      success: boolean; action?: string; hostname?: string
+    }
+    if (data.success !== true) return false
+
+    // The vendor echoes back the action and the hostname the token was solved for.
+    // A token is only good for the surface it was issued to, and the only way that
+    // holds is if somebody compares. An option the caller sets and nobody checks is
+    // worse than no option at all, because it makes them feel covered.
+    if (opts.expectedAction && data.action !== opts.expectedAction) {
+      console.warn(`[${opts.label}] token action mismatch — rejecting`)
+      return false
+    }
+    if (opts.expectedHostname && data.hostname !== opts.expectedHostname) {
+      console.warn(`[${opts.label}] token hostname mismatch — rejecting`)
+      return false
+    }
+    return true
   } catch {
     return false
   }
@@ -730,8 +757,8 @@ never surprised. An uncapped string field is an uncapped request body.
 
 **`z.string().url()` is not a scheme check.** It asks "does the URL constructor accept
 this?", and the constructor happily accepts `javascript:alert(1)` and `data:text/html,...`.
-Both are valid URLs. If that field is ever rendered as an `href`, you have a stored-XSS
-seam. Close it at the door:
+Both are valid URLs. If that field is ever rendered as an `href`, you have stored XSS.
+Close it at the door:
 
 ```ts
 const editorialUrl = z.string().url().max(500)
@@ -849,13 +876,23 @@ router.post('/', rateLimit(contactWriteLimiter), async (c) => {
 
   logEvent('contact_submitted')          // count only, no PII
 
-  // Best-effort send — never awaited before the response.
+  // Best-effort send — never awaited before the response. See the note below
+  // this block before copying it into a serverless runtime.
   void sendContactEmail(parsed.data).catch(e =>
     console.warn('[contact] email threw unexpectedly:', e instanceof Error ? e.message : e))
 
   return c.json({ ok: true }, 200)
 })
 ```
+
+**A promise left floating is safe in a long-lived server and is not safe everywhere.** The
+send above is deliberately not awaited, so a slow mail provider cannot hold the response
+open. That works because the process outlives the request. In a serverless runtime it does
+not: the platform is entitled to tear the execution context down once you have responded, and
+work nobody registered simply stops. On Cloudflare Workers the registration is
+`ctx.waitUntil(promise)`; other runtimes have their own, and a queue works everywhere. Await
+it, register it, or queue it — the one thing that does not work is leaving it hanging in a
+place that ends.
 
 **Malformed JSON, a filled honeypot, a missing token, a failed challenge, and a body that
 fails the schema all return the identical response: `400 {"error":"Invalid request"}`.**

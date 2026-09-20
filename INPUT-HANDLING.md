@@ -4,7 +4,7 @@
 
 Companion to [FORM-HARDENING.md](FORM-HARDENING.md).
 
-Version 1.1 · September 2026 · CC0 1.0
+Version 1.2 · September 2026 · CC0 1.0
 
 That guide covers a public form: a stranger types, a message goes out, nothing is kept.
 This one covers everything after that — input that is **stored** and rendered later,
@@ -136,7 +136,7 @@ next person that reaching for `dangerouslySetInnerHTML` here has a cost.
 
 ### 2b. Markdown rendered to a public page — the sanitiser is an absence
 
-This is the most common stored-XSS seam in a modern app, and the defence is unusual: it is
+This is the most common place stored XSS gets in to a modern app, and the defence is unusual: it is
 maintained by **what you do not add**.
 
 ```tsx
@@ -362,7 +362,10 @@ export function normalizeName(input: unknown): string | null {
 
   // TRUNCATED, not refused. A label must never cost somebody their work.
   // .slice() cuts UTF-16 code units, so a cap landing mid-surrogate would store half an
-  // emoji. Array.from splits by CODE POINT, which keeps the character whole.
+  // emoji. Array.from splits by CODE POINT, which is enough to guarantee no half
+  // surrogate — not enough to keep every user-perceived character whole, since a flag,
+  // a skin tone or a family emoji is several code points. Intl.Segmenter is the tool if
+  // you need that; this cap does not.
   const points = Array.from(trimmed)
   return points.length <= NAME_MAX ? trimmed : points.slice(0, NAME_MAX).join('')
 }
@@ -427,7 +430,7 @@ The split that works:
 - **The rule normalises**, per section 3, rather than rejecting, wherever rejecting would
   cost the user something disproportionate.
 
-Worked example: a display name field. The schema caps at 200 (sanity), the normaliser
+For example, a display name field. The schema caps at 200 (sanity), the normaliser
 truncates at 60 (the rule), and the client's `maxLength` is 60 (the courtesy). A 61-character
 name is stored as 60 characters rather than producing a 400 that costs somebody their work,
 and a 200,001-character body is refused at the door before anything allocates.
@@ -465,16 +468,33 @@ to gigapixels and takes the process down. Reading the header first, and refusing
 declared dimensions, costs nothing:
 
 ```ts
-let inputFormat: string | undefined
+const MAX_SIDE   = 10_000          // px, per dimension
+const MAX_PIXELS  = 50_000_000      // px total — a 50MP ceiling, well past any real photo
+
+let meta: sharp.Metadata
 try {
-  const meta = await sharp(input).metadata()   // header only — no pixel decode yet
-  inputFormat = meta.format
+  meta = await sharp(input).metadata()         // header only — no pixel decode yet
 } catch {
   return c.json({ error: 'Not a supported image' }, 400)
 }
-if (!inputFormat || !ACCEPTED_INPUT_FORMATS.has(inputFormat)) {
+if (!meta.format || !ACCEPTED_INPUT_FORMATS.has(meta.format)) {
   return c.json({ error: 'Not a supported image — use JPEG, PNG, or WebP' }, 400)
 }
+
+// The bomb check. A 4KB PNG can declare 60000x60000 and cost 10GB to decode, so the
+// declared size is refused BEFORE anything decodes a pixel. Missing dimensions are a
+// refusal too: a header that will not say how big it is does not get the benefit of
+// the doubt.
+if (!meta.width || !meta.height) {
+  return c.json({ error: 'Not a supported image' }, 400)
+}
+if (meta.width > MAX_SIDE || meta.height > MAX_SIDE ||
+    meta.width * meta.height > MAX_PIXELS) {
+  return c.json({ error: 'Image too large' }, 400)
+}
+
+// Belt and braces: cap what the decoder will expand to, in case a header lies.
+const image = sharp(input, { limitInputPixels: MAX_PIXELS })
 ```
 
 **Re-encode, always.** Decode, transform, re-encode. The file you store is one *your* library
@@ -540,8 +560,10 @@ what you already have.
 As in the companion guide — every one of these must be *watched failing*, not assumed.
 
 1. **Store `</script><img src=x onerror=alert(1)>` in a field that reaches a JSON-LD block.**
-   View source. The `<` must appear as `<` and the script element must close where you
-   expect. This is the one that is most often broken and never noticed.
+   View source. No literal `<` from the stored value may appear anywhere inside the script
+   element: the one you planted must be sitting there as `\u003c`, and the element must close
+   where you expect rather than where their payload decided. This is the one that is most
+   often broken and never noticed.
 2. **Store `<script>alert(1)</script>` and `<img src=x onerror=alert(1)>` in a markdown field
    and render the public page.** Both must appear as literal text.
 3. **Store a markdown link with a `javascript:` href.** The rendered anchor must not carry it.

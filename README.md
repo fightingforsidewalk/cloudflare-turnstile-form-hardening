@@ -58,6 +58,29 @@ The code is illustrative. Read it for the reasoning in the comments rather than 
 to copy wholesale; there is deliberately no folder of extracted files, because two copies of
 a security check is exactly the drift the guide warns about.
 
+## References and further reading
+
+This came out of one working implementation and the failures met while building it. It does
+not replace the vendor's own documentation or established application-security guidance, and
+where it differs from them it is reporting what one implementation ran into rather than
+proposing a standard. Read it alongside:
+
+- Cloudflare Turnstile — [validate the token](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/),
+  which is also where the `action` and `hostname` checks in section 5 come from
+- Cloudflare Workers — [context and `waitUntil`](https://developers.cloudflare.com/workers/runtime-apis/context/)
+  and [best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
+- Cloudflare — [HTTP headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/),
+  for what `CF-Connecting-IP` is and who is entitled to set it
+- OWASP — [Cross-Site Scripting Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html),
+  [Input Validation](https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html),
+  [SQL Injection Prevention](https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html),
+  [Logging](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
+  [File Upload](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html)
+- MDN — [`style-src-attr`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/style-src-attr),
+  for what governs an inline style attribute
+- [react-markdown](https://github.com/remarkjs/react-markdown), whose own readme is the
+  authority on what `rehype-raw` changes about its security posture
+
 ## Licence
 
 [CC0 1.0](LICENSE) — public domain, no attribution required, no strings. Take what is useful.
